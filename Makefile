@@ -20,7 +20,8 @@ icmp_ex: checksum.o icmp_ex.o
 ping: checksum.o ping.o
 	$(CC) $(CFLAGS) $(LDFLAGS)    -o ping checksum.o ping.o
 
+mySignal: mySignal.c
+	gcc mySignal.c -o mySignal -pthread
+
 clean:
 	rm -f $(BIN) *.o
-
-
