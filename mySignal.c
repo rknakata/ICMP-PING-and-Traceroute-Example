@@ -43,29 +43,44 @@ int main(int argc, char * argv[]){
 #include <pthread.h>
 
 int globalVar = 0;
+int count = 0;
 
 void handler(int signum) { //signal handler
+  count++; // alarm was delivered increment the count
   printf("Hello World!\n");
   globalVar = 1; // this is checked in mains while loop
   // signal(SIGALRM,main); //register handler to handle SIGALRM
   // alarm(1);
-  exit(1); //exit after printing
+//  exit(1); //exit after printing
+}
+void sighandler(int signum) {
+   printf("There were %d alarms delivered now exiting...\n", count);
+   exit(1);
 }
 
-void *handlerCaller(){
-signal(SIGALRM,handler); //register handler to handle SIGALRM
-alarm(1); //Schedule a SIGALRM for 1 second
-}
+// void *handlerCaller(){
+// signal(SIGALRM,handler); //register handler to handle SIGALRM
+// alarm(1); //Schedule a SIGALRM for 1 second
+// }
 
 int main(int argc, char * argv[]){
-  pthread_t thread_id;
-  pthread_create(&thread_id, NULL, handlerCaller, NULL);
-  printf("test\n");
-  pthread_join(thread_id, NULL);
+//  pthread_t thread_id;
+//  pthread_create(&thread_id, NULL, handlerCaller, NULL);
+//  printf("test\n");
+//  pthread_join(thread_id, NULL);\
+//signal(SIGALRM,handler); //register handler to handle SIGALRM
+  signal(SIGINT, sighandler);
+while(1){
+  signal(SIGALRM,handler); //register handler to handle SIGALRM
+  alarm(1); //Schedule a SIGALRM for 1 second
   // signal(SIGALRM,handler); //register handler to handle SIGALRM
   // alarm(1); //Schedule a SIGALRM for 1 second
   //https://stackoverflow.com/questions/10600250/is-it-necessary-to-call-pthread-join
+  //printf("%d\n", globalVar);
   while(globalVar != 1);//busy wait for signal to be delivered
   printf("Turing was right!\n");
+  //printf("%d\n", globalVar);
+  globalVar = 0;
+}
   return 0; //never reached
 }

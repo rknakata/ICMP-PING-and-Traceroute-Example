@@ -24,4 +24,5 @@ mySignal: mySignal.c
 	gcc mySignal.c -o mySignal -pthread
 
 clean:
+	rm -f mySignal
 	rm -f $(BIN) *.o
