@@ -26,11 +26,16 @@ int packetSize = 0;
 // char receivedTimeBuffer[30]; // holds the string of delay
 struct timeval sent;
 struct timeval received;
+struct timeval programStart;// this is used in the console when sig int is received
+struct timeval programEnd;// this is used in the console when sig int is received
 
 time_t sentTime;
 time_t receivedTime;
+time_t programStartTime;
+time_t programEndTime;
 long delay = 0;
 long totalRoundTripTime = 0;
+long programRunTime; // this is printed in the console when sig int is received
 
 // used for alarm signal handler
 int firstRun = 0; // change this to 1 after the first run finishes
@@ -94,18 +99,6 @@ if(firstRun == 0){
 
   packet_len = sizeof(struct icmp);
 
-  //send the packet
-  gettimeofday(&sent, NULL);
-   sentTime = sent.tv_sec;
-//    strftime(sentTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&sentTime));
-// printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
-  if( sendto(sockfd, sendbuf, packet_len, 0, ai->ai_addr, ai->ai_addrlen) < 0){
-    perror("sendto");//error check
-    exit(1);
-  }
-  else{
-    success ++;
-  }
 
   //built msgheader structure for receiving reply
   iov.iov_base = recvbuf;
@@ -118,24 +111,56 @@ if(firstRun == 0){
   msg.msg_control=controlbuf;
   msg.msg_controllen=BUFSIZE;
 
+
+
+  //send the packet
+  // gettimeofday(&sent, NULL);
+  //  sentTime = sent.tv_sec;
+//    strftime(sentTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&sentTime));
+// printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
+  if( sendto(sockfd, sendbuf, packet_len, 0, ai->ai_addr, ai->ai_addrlen) < 0){
+    perror("sendto");//error check
+    exit(1);
+  }
+  else{
+    success ++;
+  }
+  gettimeofday(&sent, NULL);
+   sentTime = sent.tv_sec;
+
+  // //built msgheader structure for receiving reply
+  // iov.iov_base = recvbuf;
+  // iov.iov_len = BUFSIZE;
+  //
+  // msg.msg_name = NULL;
+  // msg.msg_namelen = 0;
+  // msg.msg_iov = &iov;
+  // msg.msg_iovlen = 1;
+  // msg.msg_control=controlbuf;
+  // msg.msg_controllen=BUFSIZE;
+
   //recv the reply
+  // gettimeofday(&received, NULL);
+  // receivedTime = received.tv_sec;
   if((recv_len = recvmsg(sockfd, &msg, 0)) < 0){ //could get interupted ??
     perror("recvmsg");
     fail ++;
     exit(1);
   }
 
-  receivedTime = received.tv_sec;
+  //receivedTime = received.tv_sec;
   gettimeofday(&received, NULL);
   receivedTime = received.tv_sec;
   // strftime(receivedTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&receivedTime));
   // printf("%s%ld\n",receivedTimeBuffer,received.tv_usec);
 
   delay = (received.tv_sec - sent.tv_sec) * 1000000 + received.tv_usec - sent.tv_usec; // useq is a milionth of a second ms is microsecond which is 1/1000th of a second
+  //delay = received.tv_usec - sent.tv_usec; // useq is a milionth of a second ms is microsecond which is 1/1000th of a second
   totalRoundTripTime = delay + totalRoundTripTime;
+  // totalRoundTripTime = delay + totalRoundTripTime;
   float delayFloat = delay;
   delayFloat = delayFloat / 1000;
-  printf("time = %.1f ms\n", delayFloat);
+  // printf("time = %.1f ms\n", delayFloat);
 //   if(delay >= 0){}
 //   totalRoundTripTime = delay + totalRoundTripTime;
 //
@@ -152,16 +177,17 @@ if(firstRun == 0){
   memset(&sent, 0, sizeof(sent));
   memset(&received, 0, sizeof(received));
 
+//*****************************************
   //recv_len packet print this was here originally
-  printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
-
+  //printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
+//************************************************
   ip = (struct ip*) recvbuf;
   ip_len = ip->ip_hl << 2; //length of ip header
 
   icmp = (struct icmp *) (recvbuf + ip_len);
   data_len = (recv_len - ip_len);
-
-  printf("%d bytes from %s\n", data_len, inet_ntoa(ip->ip_src));
+//printf("time = %.1f ms\n", delayFloat);
+  printf("%d bytes from (%s) time=%.1f ms\n", data_len, inet_ntoa(ip->ip_src), delayFloat);
 }
 
 // print stats when it closes
@@ -170,17 +196,26 @@ void sighandler(int signum) {
   totalRoundTripTimeFloat = totalRoundTripTimeFloat / 1000;
   // --- google.com ping statistics --- 5 packets transmitted, 5 received, 0% packet loss, time 4005ms rtt
 //min/avg/max/mdev = 8.796/9.003/9.411/0.236 ms
+  gettimeofday(&programEnd, NULL);
+  programEndTime = programEnd.tv_sec;
+  programRunTime = (programEnd.tv_sec-programStart.tv_sec)*1000000 + programEnd.tv_usec-programStart.tv_usec;
+  programRunTime = programRunTime / 1000;
+
   printf("\n--- %s ping statistics ---\n",argsGlobal);
   float packetLossPercent = 0.0f;
   // fail = 2; used to test
   packetLossPercent = ((float) fail / (float)success) * 100;
   int packetLossPercentInt = packetLossPercent;
-  printf("%d %d delete\n", fail, success);
-  printf("%d packets transmitted, %d received, %d%% percent packet loss, time = %.1f ms now exiting...\n", success, success - fail, packetLossPercentInt,totalRoundTripTimeFloat);
+  // printf("%d %d delete\n", fail, success); // testing percent packet packet Loss
+  //https://www.youtube.com/watch?v=pFGcMIL2NVo
+  printf("%d packets transmitted, %d received, %d%% percent packet loss, time %ldms\nrtt min/avg/max/mdev = */*/*/* ms\n", success, success - fail, packetLossPercentInt,programRunTime);
+  //printf("%d packets transmitted, %d received, %d%% percent packet loss, time = %.0f ms now exiting...\n", success, success - fail, packetLossPercentInt,totalRoundTripTimeFloat);
   exit(1);
 }
 
 int main(int argc, char * argv[]){
+  //gettimeofday(&programStart, NULL);
+  programStartTime = programStart.tv_sec;
   argsGlobal = argv[1];
 
  // // char *ip = inet_ntoa(ai->ai_addr);
