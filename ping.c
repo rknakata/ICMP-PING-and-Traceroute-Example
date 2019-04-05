@@ -49,6 +49,8 @@ char * argsGlobal = NULL; // not a good idea
 int icmpReqCount = 0;
 //https://stackoverflow.com/questions/6970224/providing-passing-argument-to-signal-handler
 
+float minDelayFloat = 0;
+
 
 void handler(int signum) { //signal handler
 
@@ -82,7 +84,6 @@ if(firstRun == 0){
   struct sockaddr_in *addr;
   addr = (struct sockaddr_in *)ai->ai_addr;
   printf("PING %s (%s) *unkown values read man page* bytes of data.\n", ai->ai_canonname ? ai->ai_canonname : argsGlobal, inet_ntoa((struct in_addr)addr->sin_addr));
-  firstRun = 1; // this message wont print again
 }
 //***********************************************************************************
   // //process destination address
@@ -174,6 +175,9 @@ if(firstRun == 0){
   // totalRoundTripTime = delay + totalRoundTripTime;
   float delayFloat = delay;
   delayFloat = delayFloat / 1000;
+  if(firstRun == 0 || minDelayFloat > delayFloat){
+    minDelayFloat = delayFloat;
+  }
   // printf("time = %.1f ms\n", delayFloat);
 //   if(delay >= 0){}
 //   totalRoundTripTime = delay + totalRoundTripTime;
@@ -247,6 +251,10 @@ if(firstRun == 0){
   //data_len = (recv_len + ip_len); if i use this i get 68 bytes back from google check this out in future might need to subtract ipversion or ip header length
 //printf("time = %.1f ms\n", delayFloat);
   printf("%d bytes from (%s): icmp_req=%d ttl=%d time=%.1f ms\n", data_len, inet_ntoa(ip->ip_src), icmpReqCount, reply_ttl, delayFloat);
+  if(firstRun == 0){
+    firstRun = 1; // this message wont print again
+  }
+
 }
 
 // print stats when it closes
@@ -267,7 +275,7 @@ void sighandler(int signum) {
   int packetLossPercentInt = packetLossPercent;
   // printf("%d %d delete\n", fail, success); // testing percent packet packet Loss
   //https://www.youtube.com/watch?v=pFGcMIL2NVo
-  printf("%d packets transmitted, %d received, %d%% percent packet loss, time %ldms\nrtt min/avg/max/mdev = */*/*/* ms\n", success, success - fail, packetLossPercentInt,programRunTime);
+  printf("%d packets transmitted, %d received, %d%% percent packet loss, time %ldms\nrtt min/avg/max/mdev = %.1f/*/*/* ms\n", success, success - fail, packetLossPercentInt,programRunTime, minDelayFloat);
   //printf("%d packets transmitted, %d received, %d%% percent packet loss, time = %.0f ms now exiting...\n", success, success - fail, packetLossPercentInt,totalRoundTripTimeFloat);
   exit(1);
 }
