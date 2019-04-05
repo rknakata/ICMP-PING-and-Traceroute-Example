@@ -18,10 +18,12 @@
 
 #define BUFSIZE 1500 //1500 MTU (so within one frame in layer 2)
 #define PROTO_ICMP 1
+#define NI_MAXHOST 1025 // http://www.microhowto.info/howto/convert_an_ip_address_to_the_corresponding_domain_name_in_c.html
+
 int packetsSent = 0;
 int packetSize = 0;
 
-
+int noFailure = 0;
 
 //get packet to return time
 // char sentTimeBuffer[30]; // holds the string of delay
@@ -49,7 +51,17 @@ char * argsGlobal = NULL; // not a good idea
 int icmpReqCount = 0;
 //https://stackoverflow.com/questions/6970224/providing-passing-argument-to-signal-handler
 
-float minDelayFloat = 0;
+float minDelayFloat = 0; // min
+float avgDelayFloat = 0; // avg
+float maxDelayFloat = 0; // max
+float standardDeviation = 0; // mdev
+float totalDelayFloat = 0;
+float devArray[100];
+int devCount = 0;
+//make this dynamic if i work on this in the future
+
+char hostname[NI_MAXHOST] = "";
+//need to implement fail dropped packets
 
 
 void handler(int signum) { //signal handler
@@ -74,6 +86,9 @@ void handler(int signum) { //signal handler
   // struct cmsghdr *cmsg;
   // int *ttlptr;
   // int received_ttl;
+  //http://www.microhowto.info/howto/convert_an_ip_address_to_the_corresponding_domain_name_in_c.html
+  struct sockaddr_in *addr; // this was in first run
+
 
   //process addr info
   getaddrinfo(argsGlobal, NULL, NULL, &ai);
@@ -81,9 +96,11 @@ void handler(int signum) { //signal handler
 
 //https://stackoverflow.com/questions/20115295/how-to-print-ip-address-from-getaddrinfo
 if(firstRun == 0){
-  struct sockaddr_in *addr;
+  //struct sockaddr_in *addr;
   addr = (struct sockaddr_in *)ai->ai_addr;
-  printf("PING %s (%s) *unkown values read man page* bytes of data.\n", ai->ai_canonname ? ai->ai_canonname : argsGlobal, inet_ntoa((struct in_addr)addr->sin_addr));
+  // printf("PING %s (%s) *unkown values read man page* bytes of data.\n", ai->ai_canonname ? ai->ai_canonname : argsGlobal, inet_ntoa((struct in_addr)addr->sin_addr));
+    printf("PING %s (%s) 56(84) bytes of data.\n", ai->ai_canonname ? ai->ai_canonname : argsGlobal, inet_ntoa((struct in_addr)addr->sin_addr));
+    //change this to be like original
 }
 //***********************************************************************************
   // //process destination address
@@ -175,9 +192,30 @@ if(firstRun == 0){
   // totalRoundTripTime = delay + totalRoundTripTime;
   float delayFloat = delay;
   delayFloat = delayFloat / 1000;
+
+
   if(firstRun == 0 || minDelayFloat > delayFloat){
     minDelayFloat = delayFloat;
   }
+
+  if(firstRun == 0 || maxDelayFloat < delayFloat){
+    maxDelayFloat = delayFloat;
+  }
+
+
+    totalDelayFloat = totalDelayFloat + delayFloat;
+    devArray[devCount] = delayFloat;
+    devCount++;
+
+noFailure ++;
+
+  // float minDelayFloat = 0; // min
+  // float avgDelayFloat = 0; // avg
+  // float maxDelayFloat = 0; // max
+  // float standardDeviation = 0; // mdev
+
+
+
   // printf("time = %.1f ms\n", delayFloat);
 //   if(delay >= 0){}
 //   totalRoundTripTime = delay + totalRoundTripTime;
@@ -247,10 +285,35 @@ if(firstRun == 0){
   // }
 
 
+
+
+  //
+  //
+  // struct sockaddr_storage addr;
+  // socklen_t addr_len=sizeof(addr);
+  // int err=getpeername(sock_fd,(struct sockaddr*)&addr,&addr_len);
+  // if (err!=0) {
+  //     die("failed to fetch remote address (errno=%d)",errno);
+  // }
+
+
+
+
+
+
+
+
+  // char urlHost[NI_MAXHOST];
+  // int err = getnameinfo(ai->ai_addr,sizeof(ai->ai_addr),urlHost,sizeof(urlHost),0,0,0);
+  // if (err!=0) {
+  //     printf("Remote address: %s\n",urlHost);
+  //     perror("failed to convert address to string");
+  // }
+  // printf("Remote address: %s\n",urlHost);
   //http://minirighi.sourceforge.net/html/structip.html
   //data_len = (recv_len + ip_len); if i use this i get 68 bytes back from google check this out in future might need to subtract ipversion or ip header length
 //printf("time = %.1f ms\n", delayFloat);
-  printf("%d bytes from (%s): icmp_req=%d ttl=%d time=%.1f ms\n", data_len, inet_ntoa(ip->ip_src), icmpReqCount, reply_ttl, delayFloat);
+  printf("%d bytes from %s (%s): icmp_req=%d ttl=%d time=%.1f ms\n", data_len, hostname, inet_ntoa(ip->ip_src), icmpReqCount, reply_ttl, delayFloat);
   if(firstRun == 0){
     firstRun = 1; // this message wont print again
   }
@@ -271,16 +334,85 @@ void sighandler(int signum) {
   printf("\n--- %s ping statistics ---\n",argsGlobal);
   float packetLossPercent = 0.0f;
   // fail = 2; used to test
+  fail = success - noFailure;
   packetLossPercent = ((float) fail / (float)success) * 100;
   int packetLossPercentInt = packetLossPercent;
   // printf("%d %d delete\n", fail, success); // testing percent packet packet Loss
   //https://www.youtube.com/watch?v=pFGcMIL2NVo
-  printf("%d packets transmitted, %d received, %d%% percent packet loss, time %ldms\nrtt min/avg/max/mdev = %.1f/*/*/* ms\n", success, success - fail, packetLossPercentInt,programRunTime, minDelayFloat);
+
+  // calculate the standardDeviation
+  //https://www.wikihow.com/Calculate-Standard-Deviation
+
+
+// standardDeviation uses last 100 values
+  int newSuccess = 0;
+  newSuccess = success;
+
+  if(newSuccess > 100){
+    newSuccess = 100;
+  }
+
+  if(devCount > 100){
+    devCount = 100;
+  }
+
+  for(int i = 0; i < devCount; i++){
+    devArray[i] = devArray[i] - (totalDelayFloat / success);
+  }
+  //printf("delete %.1f\n", totalDelayFloat);
+  for(int i = 0; i < devCount; i++){
+    devArray[i] = devArray[i] * devArray[i];
+  }
+  float addSquare = 0;
+  for(int i = 0; i < devCount; i++){
+    addSquare = addSquare + devArray[i];
+  }
+
+  standardDeviation = addSquare / (success-1);
+
+  printf("%d packets transmitted, %d received, %d%% percent packet loss, time %ldms\nrtt min/avg/max/mdev = %.1f/%.1f/%.1f/%.1f ms\n", success, success - fail, packetLossPercentInt,programRunTime, minDelayFloat, totalDelayFloat / success, maxDelayFloat, standardDeviation);
   //printf("%d packets transmitted, %d received, %d%% percent packet loss, time = %.0f ms now exiting...\n", success, success - fail, packetLossPercentInt,totalRoundTripTimeFloat);
   exit(1);
 }
 
 int main(int argc, char * argv[]){
+  struct addrinfo *result;
+  struct addrinfo *res;
+  int error;
+
+
+  /* resolve the domain name into a list of addresses */
+  error = getaddrinfo(argv[1], NULL, NULL, &result);
+  if (error != 0)
+  {
+      fprintf(stderr, "error in getaddrinfo: %s\n", gai_strerror(error));
+      return EXIT_FAILURE;
+  }
+
+  //fix this later
+  /* loop over all returned results and do inverse lookup */
+  for (res = result; res != NULL; res = res->ai_next)
+  {
+      // char hostname[NI_MAXHOST] = "";
+
+
+      error = getnameinfo(res->ai_addr, res->ai_addrlen, hostname, NI_MAXHOST, NULL, 0, 0);
+      if (error != 0)
+      {
+          fprintf(stderr, "error in getnameinfo: %s\n", gai_strerror(error));
+          continue;
+      }
+      if (*hostname != '\0'){
+          //hostname is sets
+
+          // printf("hostname: %s\n", hostname);// char hostname[NI_MAXHOST] = "";
+      }
+  }
+
+
+  freeaddrinfo(result);
+
+
   gettimeofday(&programStart, NULL);
   programStartTime = programStart.tv_sec;
   argsGlobal = argv[1];
