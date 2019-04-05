@@ -214,7 +214,7 @@ void sighandler(int signum) {
 }
 
 int main(int argc, char * argv[]){
-  //gettimeofday(&programStart, NULL);
+  gettimeofday(&programStart, NULL);
   programStartTime = programStart.tv_sec;
   argsGlobal = argv[1];
 
