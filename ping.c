@@ -20,8 +20,8 @@ int packetsSent = 0;
 int packetSize;
 
 //get packet to return time
-char sentTimeBuffer[30]; // holds the string of delay
-char receivedTimeBuffer[30]; // holds the string of delay
+// char sentTimeBuffer[30]; // holds the string of delay
+// char receivedTimeBuffer[30]; // holds the string of delay
 struct timeval sent;
 struct timeval received;
 
@@ -29,7 +29,23 @@ time_t sentTime;
 time_t receivedTime;
 long delay = 0;
 
+// used for alarm signal handler
+int globalVar = 0;
+int count = 0;
 
+
+void handler(int signum) { //signal handler
+  count++; // alarm was delivered increment the count
+  printf("Hello World!\n");
+  globalVar = 1; // this is checked in mains while loop
+  // signal(SIGALRM,main); //register handler to handle SIGALRM
+  // alarm(1);
+//  exit(1); //exit after printing
+}
+void sighandler(int signum) {
+   printf("There were %d alarms delivered now exiting...\n", count);
+   exit(1);
+}
 
 
 
@@ -78,8 +94,8 @@ int main(int argc, char * argv[]){
   //send the packet
   gettimeofday(&sent, NULL);
    sentTime = sent.tv_sec;
-   strftime(sentTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&sentTime));
-printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
+//    strftime(sentTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&sentTime));
+// printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
   if( sendto(sockfd, sendbuf, packet_len, 0, ai->ai_addr, ai->ai_addrlen) < 0){
     perror("sendto");//error check
     exit(1);
@@ -105,13 +121,18 @@ printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
   receivedTime = received.tv_sec;
   gettimeofday(&received, NULL);
   receivedTime = received.tv_sec;
-  strftime(receivedTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&receivedTime));
-  printf("%s%ld\n",receivedTimeBuffer,received.tv_usec);
+  // strftime(receivedTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&receivedTime));
+  // printf("%s%ld\n",receivedTimeBuffer,received.tv_usec);
 
   delay = (received.tv_usec - sent.tv_usec); // useq is a milionth of a second ms is microsecond which is 1/1000th of a second
   float delayFloat = delay;
   delayFloat = delayFloat / 1000;
   printf("time = %.1f ms\n", delayFloat);
+
+  //clean globalVar structs
+  memset(&sent, 0, sizeof(sent));
+  memset(&received, 0, sizeof(received));
+
 
   printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
 
