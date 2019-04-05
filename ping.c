@@ -21,6 +21,8 @@
 int packetsSent = 0;
 int packetSize = 0;
 
+
+
 //get packet to return time
 // char sentTimeBuffer[30]; // holds the string of delay
 // char receivedTimeBuffer[30]; // holds the string of delay
@@ -44,6 +46,7 @@ int count = 0;
 int success = 0; // increment this when a packet is successfuly sent
 int fail = 0; // increment this when a packet receive fails
 char * argsGlobal = NULL; // not a good idea
+int icmpReqCount = 0;
 //https://stackoverflow.com/questions/6970224/providing-passing-argument-to-signal-handler
 
 
@@ -63,6 +66,12 @@ void handler(int signum) { //signal handler
   struct addrinfo * ai;
   struct iovec iov;
   struct msghdr msg;
+  //find the ttl
+  //example http://man7.org/linux/man-pages/man3/cmsg.3.html
+  //struct msghdr msgh;
+  // struct cmsghdr *cmsg;
+  // int *ttlptr;
+  // int received_ttl;
 
   //process addr info
   getaddrinfo(argsGlobal, NULL, NULL, &ai);
@@ -100,17 +109,6 @@ if(firstRun == 0){
   packet_len = sizeof(struct icmp);
 
 
-  //built msgheader structure for receiving reply
-  iov.iov_base = recvbuf;
-  iov.iov_len = BUFSIZE;
-
-  msg.msg_name = NULL;
-  msg.msg_namelen = 0;
-  msg.msg_iov = &iov;
-  msg.msg_iovlen = 1;
-  msg.msg_control=controlbuf;
-  msg.msg_controllen=BUFSIZE;
-
 
 
   //send the packet
@@ -124,9 +122,20 @@ if(firstRun == 0){
   }
   else{
     success ++;
+    icmpReqCount ++;
   }
   gettimeofday(&sent, NULL);
    sentTime = sent.tv_sec;
+   //built msgheader structure for receiving reply
+   iov.iov_base = recvbuf;
+   iov.iov_len = BUFSIZE;
+
+   msg.msg_name = NULL;
+   msg.msg_namelen = 0;
+   msg.msg_iov = &iov;
+   msg.msg_iovlen = 1;
+   msg.msg_control=controlbuf;
+   msg.msg_controllen=BUFSIZE;
 
   // //built msgheader structure for receiving reply
   // iov.iov_base = recvbuf;
@@ -142,6 +151,11 @@ if(firstRun == 0){
   //recv the reply
   // gettimeofday(&received, NULL);
   // receivedTime = received.tv_sec;
+  //-W timeout
+  //       Time to wait for a response, in seconds. The option affects only
+  //       timeout  in  absence  of any responses, otherwise ping waits for
+  //       two RTTs.
+  // did not implement maybe in future
   if((recv_len = recvmsg(sockfd, &msg, 0)) < 0){ //could get interupted ??
     perror("recvmsg");
     fail ++;
@@ -179,15 +193,60 @@ if(firstRun == 0){
 
 //*****************************************
   //recv_len packet print this was here originally
-  //printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
+//  printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
 //************************************************
   ip = (struct ip*) recvbuf;
   ip_len = ip->ip_hl << 2; //length of ip header
 
   icmp = (struct icmp *) (recvbuf + ip_len);
   data_len = (recv_len - ip_len);
+
+
+// https://unix.superglobalmegacorp.com/Net2/newsrc/netinet/ip.h.html
+//   struct ip {
+// #if BYTE_ORDER == LITTLE_ENDIAN
+// 	u_char	ip_hl:4,		/* header length */
+// 		ip_v:4;			/* version */
+// #endif
+// #if BYTE_ORDER == BIG_ENDIAN
+// 	u_char	ip_v:4,			/* version */
+// 		ip_hl:4;		/* header length */
+// #endif
+// 	u_char	ip_tos;			/* type of service */
+// 	short	ip_len;			/* total length */
+// 	u_short	ip_id;			/* identification */
+// 	short	ip_off;			/* fragment offset field */
+// #define	IP_DF 0x4000			/* dont fragment flag */
+// #define	IP_MF 0x2000			/* more fragments flag */
+// 	u_char	ip_ttl;			/* time to live */
+// 	u_char	ip_p;			/* protocol */
+// 	u_short	ip_sum;			/* checksum */
+// 	struct	in_addr ip_src,ip_dst;	/* source and dest address */
+// };
+//
+  int reply_ttl = ip->ip_ttl;
+
+
+  //  /* Receive auxiliary data in msgh */
+  //
+  //  for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+  //    if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL) {
+  //      ttlptr = (int *) CMSG_DATA(cmsg);
+  //      received_ttl = *ttlptr;
+  //      break;
+  //    }
+  //  }
+  //
+  // if (cmsg == NULL) { // could not extract ttl
+  //  /* Error: IP_TTL not enabled or small buffer or I/O error */
+  //  perror("could not extract ttl from packet");
+  // }
+
+
+  //http://minirighi.sourceforge.net/html/structip.html
+  //data_len = (recv_len + ip_len); if i use this i get 68 bytes back from google check this out in future might need to subtract ipversion or ip header length
 //printf("time = %.1f ms\n", delayFloat);
-  printf("%d bytes from (%s) time=%.1f ms\n", data_len, inet_ntoa(ip->ip_src), delayFloat);
+  printf("%d bytes from (%s): icmp_req=%d ttl=%d time=%.1f ms\n", data_len, inet_ntoa(ip->ip_src), icmpReqCount, reply_ttl, delayFloat);
 }
 
 // print stats when it closes
