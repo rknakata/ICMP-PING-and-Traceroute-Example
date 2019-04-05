@@ -9,12 +9,119 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/time.h> // added
+#include <time.h> // added
 
 #include "checksum.h" //my checksum library
 
+#define BUFSIZE 1500 //1500 MTU (so within one frame in layer 2)
+#define PROTO_ICMP 1
+int packetsSent = 0;
+int packetSize;
+
+//get packet to return time
+char sentTimeBuffer[30]; // holds the string of delay
+char receivedTimeBuffer[30]; // holds the string of delay
+struct timeval sent;
+struct timeval received;
+
+time_t sentTime;
+time_t receivedTime;
+long delay = 0;
+
+
+
+
+
 
 int main(int argc, char * argv[]){
+  char sendbuf[BUFSIZE], recvbuf[BUFSIZE], controlbuf[BUFSIZE];
+  struct icmp * icmp;
+  struct ip * ip;
+  int sockfd;
+  int packet_len, recv_len, ip_len, data_len;
+  struct addrinfo * ai;
+  struct iovec iov;
+  struct msghdr msg;
 
+
+  //process addr info
+  getaddrinfo(argv[1], NULL, NULL, &ai);
+
+
+
+  //process destination address
+  printf("Dest: %s\n", ai->ai_canonname ? ai->ai_canonname : argv[1]);
+
+  //Initialize the socket
+  if((sockfd = socket(AF_INET, SOCK_RAW, PROTO_ICMP)) < 0){
+    perror("socket"); //check for errors
+    exit(1);
+  }
+
+
+
+
+  //initiate ICMP header
+  icmp = (struct icmp *) sendbuf; //map to get proper layout
+  icmp->icmp_type = ICMP_ECHO; //Do an echoreply
+  icmp->icmp_code = 0;
+  icmp->icmp_id = 42;
+  icmp->icmp_seq= 0;
+  icmp->icmp_cksum = 0;
+
+  //compute checksum
+  icmp->icmp_cksum = checksum((unsigned short *) icmp, sizeof(struct icmp));
+
+  packet_len = sizeof(struct icmp);
+
+  //send the packet
+  gettimeofday(&sent, NULL);
+   sentTime = sent.tv_sec;
+   strftime(sentTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&sentTime));
+printf("%s%ld\n",sentTimeBuffer,sent.tv_usec);
+  if( sendto(sockfd, sendbuf, packet_len, 0, ai->ai_addr, ai->ai_addrlen) < 0){
+    perror("sendto");//error check
+    exit(1);
+  }
+
+  //built msgheader structure for receiving reply
+  iov.iov_base = recvbuf;
+  iov.iov_len = BUFSIZE;
+
+  msg.msg_name = NULL;
+  msg.msg_namelen = 0;
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control=controlbuf;
+  msg.msg_controllen=BUFSIZE;
+
+  //recv the reply
+  if((recv_len = recvmsg(sockfd, &msg, 0)) < 0){ //could get interupted ??
+    perror("recvmsg");
+    exit(1);
+  }
+
+  receivedTime = received.tv_sec;
+  gettimeofday(&received, NULL);
+  receivedTime = received.tv_sec;
+  strftime(receivedTimeBuffer,30,"%m-%d-%Y  %T.",localtime(&receivedTime));
+  printf("%s%ld\n",receivedTimeBuffer,received.tv_usec);
+
+  delay = (received.tv_usec - sent.tv_usec); // useq is a milionth of a second ms is microsecond which is 1/1000th of a second
+  float delayFloat = delay;
+  delayFloat = delayFloat / 1000;
+  printf("time = %.1f ms\n", delayFloat);
+
+  printf("%d\n",recv_len); //this is the amount of bytes received? no what is this
+
+  ip = (struct ip*) recvbuf;
+  ip_len = ip->ip_hl << 2; //length of ip header
+
+  icmp = (struct icmp *) (recvbuf + ip_len);
+  data_len = (recv_len - ip_len);
+
+  printf("%d bytes from %s\n", data_len, inet_ntoa(ip->ip_src));
 
   return 0;
 
